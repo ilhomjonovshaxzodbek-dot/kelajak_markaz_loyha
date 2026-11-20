@@ -1,0 +1,306 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened helper primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedOwner() {
+      return isVerifiedUser() && request.auth.token.email == 'ilhomjonovshaxzodbek@gmail.com';
+    }
+
+    function hasStaffRole(roleName) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/staff_roles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/staff_roles/$(request.auth.uid)).data.role == roleName;
+    }
+
+    function isAdmin() {
+      return isBootstrappedOwner() || hasStaffRole('admin');
+    }
+
+    function isAdministrator() {
+      return isAdmin() || hasStaffRole('administrator');
+    }
+
+    function isStaff() {
+      return isAdministrator() || hasStaffRole('teacher');
+    }
+
+    function isValidRole(role) {
+      return role in ['admin', 'administrator', 'teacher', 'student'];
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'role', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'role', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 120
+        && isValidRole(data.role)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPrivateInfo(data) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'phone', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 200
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 40))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStaffRole(data) {
+      return data.keys().hasAll(['uid', 'role', 'assignedBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'role', 'assignedBy', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && isValidRole(data.role)
+        && data.assignedBy is string
+        && data.assignedBy.size() >= 1
+        && data.assignedBy.size() <= 128
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidContactInfo(info) {
+      return info is map
+        && info.keys().hasAll(['phones', 'workingHours', 'address', 'description'])
+        && info.keys().hasOnly(['phones', 'workingHours', 'address', 'description'])
+        && info.phones is string && info.phones.size() <= 160
+        && info.workingHours is string && info.workingHours.size() <= 160
+        && info.address is string && info.address.size() <= 240
+        && info.description is string && info.description.size() <= 400;
+    }
+
+    function isValidCenterPublic(data) {
+      return data.keys().hasAll(['courses', 'groups', 'rewards', 'telegramCommunities', 'quizzes', 'certificates', 'updatedBy', 'updatedAt'])
+        && data.keys().hasOnly(['courses', 'groups', 'rewards', 'telegramCommunities', 'quizzes', 'certificates', 'contactInfo', 'updatedBy', 'updatedAt'])
+        && data.courses is list && data.courses.size() <= 100
+        && data.groups is list && data.groups.size() <= 150
+        && data.rewards is list && data.rewards.size() <= 100
+        && data.telegramCommunities is list && data.telegramCommunities.size() <= 60
+        && data.quizzes is list && data.quizzes.size() <= 100
+        && data.certificates is list && data.certificates.size() <= 300
+        && (!('contactInfo' in data) || isValidContactInfo(data.contactInfo))
+        && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCenterOps(data) {
+      return data.keys().hasAll(['teachers', 'students', 'homeworkTasks', 'submissions', 'registrations', 'notifications', 'payments', 'quizAttempts', 'rewardOrders', 'updatedBy', 'updatedAt'])
+        && data.keys().hasOnly(['teachers', 'students', 'homeworkTasks', 'submissions', 'registrations', 'notifications', 'payments', 'quizAttempts', 'rewardOrders', 'updatedBy', 'updatedAt'])
+        && data.teachers is list && data.teachers.size() <= 100
+        && data.students is list && data.students.size() <= 400
+        && data.homeworkTasks is list && data.homeworkTasks.size() <= 200
+        && data.submissions is list && data.submissions.size() <= 300
+        && data.registrations is list && data.registrations.size() <= 300
+        && data.notifications is list && data.notifications.size() <= 100
+        && data.payments is list && data.payments.size() <= 400
+        && data.quizAttempts is list && data.quizAttempts.size() <= 400
+        && data.rewardOrders is list && data.rewardOrders.size() <= 300
+        && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTrialLead(data) {
+      return data.keys().hasAll(['id', 'fullName', 'phone', 'courseTitle', 'preferredTime', 'status', 'createdAt'])
+        && data.keys().hasOnly(['id', 'fullName', 'phone', 'courseTitle', 'preferredTime', 'status', 'createdAt'])
+        && isValidId(data.id)
+        && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 120
+        && data.phone is string && data.phone.size() >= 4 && data.phone.size() <= 40
+        && data.courseTitle is string && data.courseTitle.size() >= 1 && data.courseTitle.size() <= 160
+        && data.preferredTime is string && data.preferredTime.size() >= 1 && data.preferredTime.size() <= 80
+        && data.status in ['new', 'confirmed']
+        && data.createdAt is timestamp;
+    }
+
+    function isValidStudentLink(data) {
+      return data.keys().hasAll(['uid', 'studentId', 'studentName', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'studentId', 'studentName', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.studentId is string && data.studentId.size() >= 1 && data.studentId.size() <= 128
+        && data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 120
+        && data.updatedAt is timestamp;
+    }
+
+    // 3. Startup connection check document
+    match /test/connection {
+      allow get: if true;
+    }
+
+    // 4. Public-safe User Profiles (/users/{userId})
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdministrator());
+      allow list: if isAdministrator() || (isSignedIn() && resource.data.uid == request.auth.uid);
+
+      allow create: if isValidId(userId)
+        && isSignedIn()
+        && isValidUserProfile(incoming())
+        && incoming().uid == userId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (isOwner(userId) && incoming().role == 'student')
+        );
+
+      allow update: if isValidId(userId)
+        && isSignedIn()
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'role', 'updatedAt']))
+          || (isOwner(userId) && incoming().role == existing().role && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt']))
+        );
+
+      allow delete: if isValidId(userId) && isAdmin();
+
+      // Isolated PII subcollection (/users/{userId}/private/{docId})
+      match /private/{docId} {
+        allow get: if isValidId(userId) && isValidId(docId) && (isOwner(userId) || isAdministrator());
+        allow list: if isValidId(userId) && (isOwner(userId) || (isSignedIn() && resource.data.uid == request.auth.uid) || isAdministrator());
+
+        allow create: if isValidId(userId)
+          && isValidId(docId)
+          && (isOwner(userId) || isAdmin())
+          && isValidPrivateInfo(incoming())
+          && incoming().uid == userId
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+
+        allow update: if isValidId(userId)
+          && isValidId(docId)
+          && (isOwner(userId) || isAdmin())
+          && isValidPrivateInfo(incoming())
+          && incoming().uid == existing().uid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'phone', 'updatedAt']);
+
+        allow delete: if isValidId(userId) && isValidId(docId) && isAdmin();
+      }
+    }
+
+    // 5. Trusted RBAC Role Registry (/staff_roles/{userId})
+    match /staff_roles/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdministrator());
+      allow list: if isAdministrator() || (isSignedIn() && resource.data.uid == request.auth.uid);
+
+      allow create: if isValidId(userId)
+        && isAdmin()
+        && isValidStaffRole(incoming())
+        && incoming().uid == userId
+        && incoming().assignedBy == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(userId)
+        && isAdmin()
+        && isValidStaffRole(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().assignedBy == request.auth.uid
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'assignedBy', 'updatedAt']);
+
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // 6. Public Non-PII Center Catalog (/center_public/{docId})
+    match /center_public/{docId} {
+      allow get: if isValidId(docId);
+
+      allow create, update: if isValidId(docId)
+        && isVerifiedUser()
+        && isStaff()
+        && isValidCenterPublic(incoming())
+        && incoming().updatedBy == request.auth.uid
+        && incoming().updatedAt == request.time;
+
+      allow delete: if isValidId(docId) && isAdmin();
+    }
+
+    // 7. Staff-Only Operational State (/center_ops/{docId})
+    match /center_ops/{docId} {
+      allow get: if isValidId(docId) && isVerifiedUser() && isStaff();
+
+      allow create, update: if isValidId(docId)
+        && isVerifiedUser()
+        && isStaff()
+        && isValidCenterOps(incoming())
+        && incoming().updatedBy == request.auth.uid
+        && incoming().updatedAt == request.time;
+
+      allow delete: if isValidId(docId) && isAdmin();
+    }
+
+    // 8. Public Trial Leads (/trial_leads/{leadId})
+    match /trial_leads/{leadId} {
+      allow get: if isValidId(leadId) && isVerifiedUser() && isAdministrator();
+      allow list: if isVerifiedUser() && isAdministrator();
+
+      allow create: if isValidId(leadId)
+        && isValidTrialLead(incoming())
+        && incoming().id == leadId
+        && incoming().status == 'new'
+        && incoming().createdAt == request.time;
+
+      allow update: if isValidId(leadId)
+        && isVerifiedUser()
+        && isAdministrator()
+        && isValidTrialLead(incoming())
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+
+      allow delete: if isValidId(leadId) && isVerifiedUser() && isAdministrator();
+    }
+
+    // 9. Student Account Links (/student_links/{userId})
+    match /student_links/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isStaff());
+
+      allow create, update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidStudentLink(incoming())
+        && incoming().uid == userId
+        && incoming().updatedAt == request.time;
+
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
+    }
+  }
+}

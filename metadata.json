@@ -1,0 +1,8 @@
+{
+  "name": "Kelajak Markazi Telegram Bot",
+  "description": "Kelajak Markazi o'quv markazi uchun zamonaviy Telegram bot platformasi: o'quvchilar kabineti, ustozlar paneli, AI maslahatchi va jonli Telegram ulanishi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
